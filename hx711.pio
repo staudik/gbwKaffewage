@@ -1,0 +1,70 @@
+.program hx711
+//reads the wight form hx711
+
+.wrap_target
+
+    ;pre config
+    set pins, 0
+    set x, 23
+
+    noData:             ;waiting until Dout is low (data ready)
+    jmp pin, noData
+    ;wait schort time vor hx711 
+    nop [1]
+
+    ;pulsing sclk pin 25 times to get Data
+
+    nextBit:
+    set pins, 1 [5]
+    set pins, 0 [3]
+    in  pins, 1 [2]
+    jmp x--, nextBit
+
+    ;sets the gain for next konversation to 64
+    set x, 0
+    setGain:
+    set pins, 1 [5]
+    set pins, 0 [5]
+    jmp x--, setGain
+
+    ;output the data
+    mov y, :: isr   ;bitreversing
+    mov isr, y
+    push noblock       ;isr to fifoRX
+.wrap
+
+
+
+
+/*init the Statmachin for the interface for the hx711
+    @param pio (PIO): pio instanc Ppio0/pio1
+    @param sm (uint): claim sm
+    @param offset (uint): offset of sm program
+    @param SCLK (uint): Clock pin of hx711
+    @param Dout (uint): data pin of hx711
+*/
+
+
+%c-sdk {
+    //Helper function
+    static inline void hx711_program_init(PIO pio, uint sm, uint offset, uint SCLK, uint Dout, float div){
+        
+        pio_sm_config c = hx711_program_get_default_config(offset);
+        
+        pio_gpio_init(pio, SCLK);    //Allow PIO to control GPIO pin
+
+        pio_gpio_init(pio, Dout);
+
+        sm_config_set_set_pins(&c, SCLK, 1); // Connect SCLK to SET pin
+        sm_config_set_in_pins(&c, Dout);  //connect Dout to in pin
+        sm_config_set_jmp_pin(&c, Dout);
+
+        pio_sm_set_consecutive_pindirs(pio, sm, SCLK, 1, true); // set pin direction to true = out / false = in        
+        pio_sm_set_consecutive_pindirs(pio, sm, Dout, 1, false);
+
+        sm_config_set_clkdiv(&c, div); // sets clkdiv
+
+        pio_sm_init(pio, sm, offset, &c);
+
+    }
+%}
