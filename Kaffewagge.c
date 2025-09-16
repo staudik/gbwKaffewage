@@ -9,7 +9,7 @@
 #include "hardware/timer.h"
 #include "math.h"
 #include "pico/multicore.h"
-
+#include "hardware/watchdog.h"
 #include "lcd.h"
 
 // gpio Pins
