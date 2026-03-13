@@ -10,7 +10,8 @@
 #include "math.h"
 #include "pico/multicore.h"
 #include "hardware/watchdog.h"
-#include "lcd.h"
+#include "hardware/gpio.h"
+#include "pico-ssd1306/ssd1306.h"
 
 // gpio Pins
 #define HX711_DOUT 5
@@ -47,7 +48,6 @@ bool entryMode = false;
 void ui_handling();
 
 // interupt handler, pio encoder
-
 void pio_irq_handler()
 {
     if (entryMode)
@@ -110,38 +110,6 @@ void taraf()
 // interupt handler for gpio irq (putton and encoder_button)
 void gpio_irq_handler(uint gpio, uint32_t event_mask)
 {
-    if (gpio == GPIO_BUTTON)
-    {
-        if (!startgrind)
-        {
-            // tara wight
-            taraf();
-
-            startgrind = true;
-        }
-    }
-
-    if (gpio == Encoder_Button)
-    {
-        switch (selectetRow)
-        {
-        case 1:
-            entryMode = !entryMode;
-            break;
-
-        case 2:
-            break;
-
-        case 3:
-            break;
-
-        case 4:
-            lcdChangeLine(4);
-            lcdSendData(0xff);
-            taraf();
-            break;
-        }
-    }
 }
 
 int main()
@@ -157,9 +125,7 @@ int main()
         gpio_pull_up(I2C_SDA);
         gpio_pull_up(I2C_SCL);
 
-        // startup lcd
-        lcdInit();
-        lcdSendString("Starting...");
+        // OLED init
 
         // gpio init
         gpio_init(GPIO_BUTTON);
@@ -243,47 +209,16 @@ int main()
     return 0;
 }
 
-// program for Core 1 Handls the LCD and the encoder
+// program for Core 1 Handels the Display and the encoder
 void ui_handling()
 {
 
     char string[20]; // string Buffer for sprintf
+    ssd1306_t disp;
+    ssd1306_init(&disp, );
 
     while (true)
     {
-        // writes Soll value to lcd
-        sprintf(string, " Soll:   %.1f g", stopWhight);
-        lcdClearLine(1);
-        lcdSendString(string);
-
-        // writes is value to lcd
-        sprintf(string, " Ist:    %.1f g", whight);
-        lcdClearLine(2);
-        lcdSendString(string);
-
-        // writes last value to lcd
-        lcdClearLine(3);
-        sprintf(string, " letzte: %.1f g", lastStopp);
-        lcdSendString(string);
-
-        lcdClearLine(4);
-        lcdSendString(" Tara");
-
-        if (startgrind)
-        {
-            lcdSendString("     mahle...");
-        }
-
-        lcdChangeLine(selectetRow);
-
-        if (entryMode)
-        {
-            lcdSendData(0xff);
-        }
-        else
-        {
-            lcdSendString(">");
-        }
 
         busy_wait_ms(100);
     }

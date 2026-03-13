@@ -50,7 +50,11 @@ pico_generate_pio_header(Kaffewagge ${CMAKE_CURRENT_LIST_DIR}/encoder.pio)
 pico_enable_stdio_uart(Kaffewagge 1)
 pico_enable_stdio_usb(Kaffewagge 1)
 
-
+  add_subdirectory(pico-ssd1306)
+  target_link_libraries(Kaffewagge
+  pico_ssd1306
+  # you will also need hardware i2c library for communication with the display
+  hardware_i2c)
 
 # Add the standard library to the build
 target_link_libraries(Kaffewagge

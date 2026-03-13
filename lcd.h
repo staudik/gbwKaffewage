@@ -8,7 +8,7 @@
 #define I2C_PORT i2c0
 #define I2C_SDA 8
 #define I2C_SCL 9
-#define LCD_ADR 0x27
+#define LCD_ADR 0x3D
 
 // adapter: MSB: DB7-DB4, BT, E, RW, RS
 
@@ -59,6 +59,5 @@ only 1,2,3,4 posebil rest will be ignorrt
     @param n(uint): line of number to clear
 */
 void lcdClearLine(uint n);
-
 
 #endif
