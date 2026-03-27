@@ -11,7 +11,7 @@
 #include "pico/multicore.h"
 #include "hardware/watchdog.h"
 #include "hardware/gpio.h"
-#include "pico-ssd1306/ssd1306.h"
+#include "ssd1306.h"
 
 // gpio Pins
 #define HX711_DOUT 5
@@ -23,6 +23,12 @@
 
 #define GPIO_BUTTON 7
 #define GPIO_RELAY 3
+
+#define I2C_PORT i2c0
+#define I2C_SDA 8
+#define I2C_SCL 9
+
+#define SSD1306_ADDRESS 0x3c
 
 // for pio
 #define PIO_SM_Clock 200000 // 200 kHz clock
@@ -215,11 +221,11 @@ void ui_handling()
 
     char string[20]; // string Buffer for sprintf
     ssd1306_t disp;
-    ssd1306_init(&disp, );
+    ssd1306_init(&disp, 128, 64, SSD1306_ADDRESS, I2C_PORT);
 
     while (true)
     {
-
+        ssd1306_draw_string(&disp, 0, 0, 1, "test");
         busy_wait_ms(100);
     }
 }

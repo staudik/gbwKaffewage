@@ -16,14 +16,14 @@ else()
     set(USERHOME $ENV{HOME})
 endif()
 set(sdkVersion 2.1.1)
-set(toolchainVersion 14_2_Rel1)
+set(toolchainVersion RISCV_RPI_2_0_0_5)
 set(picotoolVersion 2.1.1)
 set(picoVscode ${USERHOME}/.pico-sdk/cmake/pico-vscode.cmake)
 if (EXISTS ${picoVscode})
     include(${picoVscode})
 endif()
 # ====================================================================================
-set(PICO_BOARD pico_w CACHE STRING "Board type")
+set(PICO_BOARD pico2 CACHE STRING "Board type")
 
 # Pull in Raspberry Pi Pico SDK (must be before project)
 include(pico_sdk_import.cmake)
@@ -37,7 +37,7 @@ pico_sdk_init()
 # Add executable. Default name is the project name, version 0.1
 
 add_executable(Kaffewagge Kaffewagge.c )
-add_library(lcd lcd.c)
+add_library(ssd1306 ssd1306.c)
 
 pico_set_program_name(Kaffewagge "Kaffewagge")
 pico_set_program_version(Kaffewagge "0.1")
@@ -50,18 +50,12 @@ pico_generate_pio_header(Kaffewagge ${CMAKE_CURRENT_LIST_DIR}/encoder.pio)
 pico_enable_stdio_uart(Kaffewagge 1)
 pico_enable_stdio_usb(Kaffewagge 1)
 
-  add_subdirectory(pico-ssd1306)
-  target_link_libraries(Kaffewagge
-  pico_ssd1306
-  # you will also need hardware i2c library for communication with the display
-  hardware_i2c)
-
 # Add the standard library to the build
 target_link_libraries(Kaffewagge
         pico_stdlib
         pico_multicore
         )
-target_link_libraries(lcd 
+target_link_libraries(ssd1306
         pico_stdlib
         hardware_i2c
 )
@@ -75,7 +69,7 @@ target_include_directories(Kaffewagge PUBLIC
 target_link_libraries(Kaffewagge 
         hardware_i2c
         hardware_pio
-        lcd
+        ssd1306
         )
 
 pico_add_extra_outputs(Kaffewagge)
