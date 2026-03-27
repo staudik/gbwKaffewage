@@ -41,6 +41,9 @@
 uint sm_encoder = 0;
 uint sm_hx711 = 0;
 
+// init sturct for display
+ssd1306_t disp;
+
 // globel Varibals
 uint32_t value = 0;
 float whight = 0;
@@ -124,8 +127,8 @@ int main()
     { // init block
         stdio_init_all();
 
-        // I2C Initialisation. Using it at 100Khz.
-        i2c_init(i2c_default, 100 * 1000);
+        // I2C Initialisation. Using it at 400Khz.
+        i2c_init(i2c_default, 400 * 1000);
         gpio_set_function(I2C_SDA, GPIO_FUNC_I2C);
         gpio_set_function(I2C_SCL, GPIO_FUNC_I2C);
         gpio_pull_up(I2C_SDA);
@@ -215,17 +218,40 @@ int main()
     return 0;
 }
 
+void ui_draw_main_menu()
+{
+    ssd1306_clear(&disp);
+    char string[64]; // string Buffer for sprintf
+
+    sprintf(string, "Soll: %.2f g", &stopWhight);
+    ssd1306_draw_string(&disp, 0, 0, 2, string);
+
+    sprintf(string, "Ist: %.2f g", &whight);
+    ssd1306_draw_string(&disp, 0, 20, 2, string);
+
+    sprintf(string, "letzte: %.2f g", &lastStopp);
+    ssd1306_draw_string(&disp, 0, 40, 1, string);
+
+    ssd1306_show(&disp);
+}
+
 // program for Core 1 Handels the Display and the encoder
 void ui_handling()
 {
 
-    char string[20]; // string Buffer for sprintf
-    ssd1306_t disp;
+    char string[64]; // string Buffer for sprintf
+
+    disp.external_vcc = false;
+
+    // init Display and clear
     ssd1306_init(&disp, 128, 64, SSD1306_ADDRESS, I2C_PORT);
+    ssd1306_clear(&disp);
+    ssd1306_show(&disp);
 
     while (true)
     {
-        ssd1306_draw_string(&disp, 0, 0, 1, "test");
+        ui_draw_main_menu();
+
         busy_wait_ms(100);
     }
 }
