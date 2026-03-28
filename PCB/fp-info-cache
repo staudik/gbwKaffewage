@@ -1,4 +1,4 @@
-23132033429892681
+23133816217839375
 Audio_Module
 Reverb_BTDR-1H
 Digital Reverberation Unit, http://www.belton.co.kr/inc/downfile.php?seq=17&file=pdf (footprint from http://www.uk-electronic.de/PDF/BTDR-1.pdf)
@@ -55663,13 +55663,6 @@ One digit LED 7 segment SA39-11 SC39-11 SA39-12 SC39-12
 0
 10
 10
-EigeneFootprints
-hx711_module
-
-
-0
-10
-10
 Ferrite_THT
 LairdTech_28C0236-0JW-10
 Ferrite, vertical, LairdTech 28C0236-0JW-10, https://assets.lairdtech.com/home/brandworld/files/28C0236-0JW-10.pdf, JW Miller core https://www.bourns.com/products/magnetic-products/j.w.-miller-through-hole-ferrite-beads-emi-filters
@@ -63510,6 +63503,13 @@ Through hole pin header THT 2x20 2.54mm double row
 0
 86
 43
+MCU_RaspberryPi_and_Boards
+RPi_Pico_SMD_micro_version
+Through hole straight pin header, 2x20, 2.54mm pitch, double rows
+Through hole pin header THT 2x20 2.54mm double row
+0
+23
+23
 Module
 A20_OLINUXINO_LIME2
 A20 Olinuxino LIME2, 1.2GHz, 512-1024MB RAM, Micro-SD, NAND or eMMC, 1000Mbit Ethernet
@@ -94765,3 +94765,10 @@ Varistor VF
 0
 2
 2
+WeAct-RP2040-Pico
+WeAct-RP2040-Pico
+
+
+0
+44
+44

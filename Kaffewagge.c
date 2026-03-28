@@ -10,7 +10,8 @@
 #include "math.h"
 #include "pico/multicore.h"
 #include "hardware/watchdog.h"
-#include "lcd.h"
+#include "hardware/gpio.h"
+#include "ssd1306.h"
 
 // gpio Pins
 #define HX711_DOUT 5
@@ -23,6 +24,12 @@
 #define GPIO_BUTTON 7
 #define GPIO_RELAY 3
 
+#define I2C_PORT i2c0
+#define I2C_SDA 8
+#define I2C_SCL 9
+
+#define SSD1306_ADDRESS 0x3c
+
 // for pio
 #define PIO_SM_Clock 200000 // 200 kHz clock
 
@@ -31,39 +38,84 @@
 
 #define GAIN 1802
 
+// for displays
+#define Elements_On_MainMenu 3
+#define Elements_On_Settings 2
+#define Char_High 8
+#define Char_width 6
+
 uint sm_encoder = 0;
 uint sm_hx711 = 0;
 
+// init sturct for display
+ssd1306_t disp;
+
 // globel Varibals
 uint32_t value = 0;
-float whight = 0;
-float tarra = 230772.8851;
-float lastStopp = 0;
+float whight = 0;          // current calc. whight
+float tarra = 230772.8851; // current tarra value
+float lastStopp = 0;       // last whight that was ground
+float offset = -1.0;       // offset for stopp
 bool startgrind = false;
-float stopWhight = 18.0;
-uint8_t selectetRow = 1;
-bool entryMode = false;
+float stopWhight = 18.0; // whight to stop at
+bool entryMode = false;  // is cursure in entrymode
+
+typedef enum
+{
+    mainMenu,
+    Settings
+} displayState;
+displayState dispState = mainMenu;
+
+typedef enum
+{
+    soll,
+    tara,
+    settingsButton,
+    offsetSetting,
+    backToManu,
+} selectetElement;
+selectetElement selectEle = soll;
 
 void ui_handling();
 
 // interupt handler, pio encoder
-
 void pio_irq_handler()
 {
     if (entryMode)
     {
-        switch (selectetRow)
+        switch (dispState)
         {
-        case 1:
-            if (PIO_ENCODER->irq & 1)
+        case mainMenu:
+            switch (selectEle)
             {
-                stopWhight += 0.1;
-            }
+            case soll:
+                if (PIO_ENCODER->irq & 1)
+                {
+                    stopWhight += 0.1;
+                }
 
-            if (PIO_ENCODER->irq & 2)
-            {
-                stopWhight -= 0.1;
+                if (PIO_ENCODER->irq & 2)
+                {
+                    stopWhight -= 0.1;
+                }
             }
+            break;
+        case Settings:
+            switch (selectEle)
+            {
+            case offsetSetting:
+                if (PIO_ENCODER->irq & 1)
+                {
+                    offset += 0.05;
+                }
+
+                if (PIO_ENCODER->irq & 2)
+                {
+                    offset -= 0.05;
+                }
+            }
+            break;
         }
     }
     else
@@ -71,21 +123,35 @@ void pio_irq_handler()
 
         if (PIO_ENCODER->irq & 1)
         {
-            selectetRow++;
+            selectEle++;
         }
-
         if (PIO_ENCODER->irq & 2)
         {
-            selectetRow--;
+            selectEle--;
         }
 
-        if (selectetRow < 1)
+        switch (dispState)
         {
-            selectetRow = 4;
-        }
-        else if (selectetRow > 4)
-        {
-            selectetRow = 1;
+        case mainMenu:
+            if (selectEle < 0)
+            {
+                selectEle = Elements_On_MainMenu - 1;
+            }
+            else if (selectEle > Elements_On_MainMenu - 1)
+            {
+                selectEle = 0;
+            }
+            break;
+        case Settings:
+            if (selectEle < 0)
+            {
+                selectEle = Elements_On_Settings - 1;
+            }
+            else if (selectEle > Elements_On_Settings - 1)
+            {
+                selectEle = 0;
+            }
+            break;
         }
     }
 
@@ -95,50 +161,42 @@ void pio_irq_handler()
 // tara the whight
 void taraf()
 {
-    int sizeTarra = 200;
+    int sizeTarra = 50;
     long sum = 0;
 
     for (int i = 0; i < sizeTarra; i++)
     {
         sum += pio_sm_get(PIO_HX711, sm_hx711);
-        busy_wait_ms(10);
+        busy_wait_ms(90);
     }
 
     tarra = (float)sum / sizeTarra;
 }
 
-// interupt handler for gpio irq (putton and encoder_button)
+// interupt handler for gpio irq encoder_button
 void gpio_irq_handler(uint gpio, uint32_t event_mask)
 {
-    if (gpio == GPIO_BUTTON)
-    {
-        if (!startgrind)
-        {
-            // tara wight
-            taraf();
-
-            startgrind = true;
-        }
-    }
+    gpio_acknowledge_irq(gpio, event_mask);
 
     if (gpio == Encoder_Button)
     {
-        switch (selectetRow)
+        switch (selectEle)
         {
-        case 1:
-            entryMode = !entryMode;
+        case soll:
+            if (entryMode)
+            {
+                entryMode = true;
+            }
+            else
+            {
+                entryMode = false;
+            }
             break;
-
-        case 2:
-            break;
-
-        case 3:
-            break;
-
-        case 4:
-            lcdChangeLine(4);
-            lcdSendData(0xff);
+        case tara:
             taraf();
+            break;
+        case settingsButton:
+            dispState = Settings;
             break;
         }
     }
@@ -150,27 +208,20 @@ int main()
     { // init block
         stdio_init_all();
 
-        // I2C Initialisation. Using it at 100Khz.
-        i2c_init(i2c_default, 100 * 1000);
+        // I2C Initialisation. Using it at 400Khz.
+        i2c_init(i2c_default, 400 * 1000);
         gpio_set_function(I2C_SDA, GPIO_FUNC_I2C);
         gpio_set_function(I2C_SCL, GPIO_FUNC_I2C);
         gpio_pull_up(I2C_SDA);
         gpio_pull_up(I2C_SCL);
 
-        // startup lcd
-        lcdInit();
-        lcdSendString("Starting...");
-
         // gpio init
-        gpio_init(GPIO_BUTTON);
         gpio_init(GPIO_RELAY);
         gpio_init(Encoder_Button);
 
-        gpio_set_dir(GPIO_BUTTON, GPIO_IN);
         gpio_set_dir(GPIO_RELAY, GPIO_OUT);
         gpio_set_dir(Encoder_Button, GPIO_IN);
         gpio_set_irq_enabled_with_callback(Encoder_Button, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);
-        gpio_set_irq_enabled_with_callback(GPIO_BUTTON, GPIO_IRQ_EDGE_RISE, true, &gpio_irq_handler);
 
         // sets up the pio sm for hx711
         //******************************************************
@@ -202,14 +253,15 @@ int main()
     }
 
     // Variabl init for core 0
-    int sizeMean = 20;   // size of floating Mean array
+    int sizeMean = 3;    // size of floating Mean array
     int array[sizeMean]; // array for floating mean
     int count = 0;
+    int sum = 0;
 
     // main program loop
     while (true)
     {
-        int sum = 0;
+        sum = 0;
         array[count] = pio_sm_get(PIO_HX711, sm_hx711);
         count++;
 
@@ -226,8 +278,6 @@ int main()
             count = 0;
         }
 
-        busy_wait_ms(5);
-
         if (startgrind)
         {
             gpio_put(GPIO_RELAY, true);
@@ -236,55 +286,103 @@ int main()
             {
                 gpio_put(GPIO_RELAY, false);
                 startgrind = false;
+                busy_wait_ms(10);
                 lastStopp = whight;
             }
         }
+        printf("%f\n\r", whight);
+        busy_wait_ms(80);
     }
     return 0;
 }
 
-// program for Core 1 Handls the LCD and the encoder
+// draws settings menu
+void ui_draw_settings()
+{
+    ssd1306_clear(&disp);
+    char string[64];
+
+    sprintf(string, "Offset:");
+    ssd1306_draw_string(&disp, 3, 3, 2, string);
+
+    sprintf(string, "%.2f", offset);
+    ssd1306_draw_string(&disp, 3, 4 + Char_High * 2, 2, string);
+
+    sprintf(string, "main Menu");
+    ssd1306_draw_string(&disp, 10, 54, 1, string);
+
+    selectEle = offsetSetting;
+
+    switch (selectEle)
+    {
+    case offsetSetting:
+        ssd1306_draw_empty_square(&disp, 1, 1, 6 * Char_width * 2 + 2, Char_High * 2 + 2);
+        break;
+    case backToManu:
+        ssd1306_draw_empty_square(&disp, 8, 52, 9 * Char_width + 2, Char_High + 2);
+        break;
+    }
+
+    ssd1306_show(&disp);
+}
+
+// draws the main menu with current data
+void ui_draw_main_menu()
+{
+    ssd1306_clear(&disp);
+    char string[64]; // string Buffer for sprintf
+
+    sprintf(string, "Soll:%.1fg", stopWhight);
+    ssd1306_draw_string(&disp, 3, 3, 2, string);
+
+    sprintf(string, "last:%.1fg", lastStopp);
+    ssd1306_draw_string(&disp, 3, 3 + Char_High * 2 + 2, 2, string);
+
+    sprintf(string, "Tara");
+    ssd1306_draw_string(&disp, 3, 3 + Char_High * 4 + 2, 1, string);
+
+    sprintf(string, "Settings");
+    ssd1306_draw_string(&disp, 9, 54, 1, string);
+
+    switch (selectEle)
+    {
+    case soll:
+        ssd1306_draw_empty_square(&disp, 1, 1, (5 * Char_width) * 2 + 2, Char_High * 2 + 2);
+        break;
+    case settingsButton:
+        ssd1306_draw_empty_square(&disp, 7, 52, 8 * Char_width + 2, Char_High + 2);
+        break;
+    case tara:
+        ssd1306_draw_empty_square(&disp, 1, 3 + Char_High * 4, 4 * Char_width + 2, Char_High + 2);
+    }
+
+    ssd1306_show(&disp);
+}
+
+// program for Core 1 Handels the Display and the encoder
 void ui_handling()
 {
 
-    char string[20]; // string Buffer for sprintf
+    char string[64]; // string Buffer for sprintf
+
+    disp.external_vcc = false;
+
+    // init Display and clear
+    ssd1306_init(&disp, 128, 64, SSD1306_ADDRESS, I2C_PORT);
+    ssd1306_clear(&disp);
+    ssd1306_show(&disp);
 
     while (true)
     {
-        // writes Soll value to lcd
-        sprintf(string, " Soll:   %.1f g", stopWhight);
-        lcdClearLine(1);
-        lcdSendString(string);
-
-        // writes is value to lcd
-        sprintf(string, " Ist:    %.1f g", whight);
-        lcdClearLine(2);
-        lcdSendString(string);
-
-        // writes last value to lcd
-        lcdClearLine(3);
-        sprintf(string, " letzte: %.1f g", lastStopp);
-        lcdSendString(string);
-
-        lcdClearLine(4);
-        lcdSendString(" Tara");
-
-        if (startgrind)
+        switch (dispState)
         {
-            lcdSendString("     mahle...");
+        case mainMenu:
+            ui_draw_main_menu();
+            break;
+        case Settings:
+            ui_draw_settings();
+            break;
         }
-
-        lcdChangeLine(selectetRow);
-
-        if (entryMode)
-        {
-            lcdSendData(0xff);
-        }
-        else
-        {
-            lcdSendString(">");
-        }
-
-        busy_wait_ms(100);
+        busy_wait_ms(250);
     }
 }
