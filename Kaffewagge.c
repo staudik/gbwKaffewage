@@ -40,6 +40,7 @@
 
 // for displays
 #define Elements_On_MainMenu 3
+#define Elements_On_Settings 2
 #define Char_High 8
 #define Char_width 6
 
@@ -54,7 +55,7 @@ uint32_t value = 0;
 float whight = 0;          // current calc. whight
 float tarra = 230772.8851; // current tarra value
 float lastStopp = 0;       // last whight that was ground
-float offset = -1, 0;       // offset for stopp
+float offset = -1.0;       // offset for stopp
 bool startgrind = false;
 float stopWhight = 18.0; // whight to stop at
 bool entryMode = false;  // is cursure in entrymode
@@ -71,7 +72,8 @@ typedef enum
     soll,
     tara,
     settingsButton,
-    offsetSetting
+    offsetSetting,
+    backToManu,
 } selectetElement;
 selectetElement selectEle = soll;
 
@@ -82,18 +84,38 @@ void pio_irq_handler()
 {
     if (entryMode)
     {
-        switch (selectEle)
+        switch (dispState)
         {
-        case soll:
-            if (PIO_ENCODER->irq & 1)
+        case mainMenu:
+            switch (selectEle)
             {
-                stopWhight += 0.1;
-            }
+            case soll:
+                if (PIO_ENCODER->irq & 1)
+                {
+                    stopWhight += 0.1;
+                }
 
-            if (PIO_ENCODER->irq & 2)
-            {
-                stopWhight -= 0.1;
+                if (PIO_ENCODER->irq & 2)
+                {
+                    stopWhight -= 0.1;
+                }
             }
+            break;
+        case Settings:
+            switch (selectEle)
+            {
+            case offsetSetting:
+                if (PIO_ENCODER->irq & 1)
+                {
+                    offset += 0.05;
+                }
+
+                if (PIO_ENCODER->irq & 2)
+                {
+                    offset -= 0.05;
+                }
+            }
+            break;
         }
     }
     else
@@ -107,13 +129,29 @@ void pio_irq_handler()
         {
             selectEle--;
         }
-        if (selectEle < 0)
+
+        switch (dispState)
         {
-            selectEle = Elements_On_MainMenu;
-        }
-        else if (selectEle > Elements_On_MainMenu)
-        {
-            selectEle = 0;
+        case mainMenu:
+            if (selectEle < 0)
+            {
+                selectEle = Elements_On_MainMenu - 1;
+            }
+            else if (selectEle > Elements_On_MainMenu - 1)
+            {
+                selectEle = 0;
+            }
+            break;
+        case Settings:
+            if (selectEle < 0)
+            {
+                selectEle = Elements_On_Settings - 1;
+            }
+            else if (selectEle > Elements_On_Settings - 1)
+            {
+                selectEle = 0;
+            }
+            break;
         }
     }
 
@@ -138,6 +176,7 @@ void taraf()
 // interupt handler for gpio irq encoder_button
 void gpio_irq_handler(uint gpio, uint32_t event_mask)
 {
+    gpio_acknowledge_irq(gpio, event_mask);
 
     if (gpio == Encoder_Button)
     {
@@ -176,18 +215,13 @@ int main()
         gpio_pull_up(I2C_SDA);
         gpio_pull_up(I2C_SCL);
 
-        // OLED init
-
         // gpio init
-        gpio_init(GPIO_BUTTON);
         gpio_init(GPIO_RELAY);
         gpio_init(Encoder_Button);
 
-        gpio_set_dir(GPIO_BUTTON, GPIO_IN);
         gpio_set_dir(GPIO_RELAY, GPIO_OUT);
         gpio_set_dir(Encoder_Button, GPIO_IN);
         gpio_set_irq_enabled_with_callback(Encoder_Button, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);
-        gpio_set_irq_enabled_with_callback(GPIO_BUTTON, GPIO_IRQ_EDGE_RISE, true, &gpio_irq_handler);
 
         // sets up the pio sm for hx711
         //******************************************************
@@ -268,11 +302,26 @@ void ui_draw_settings()
     ssd1306_clear(&disp);
     char string[64];
 
-    sprintf(string, "Offset: %.1f", offset);
-    ssd1306_draw_string(&disp, 3,3,2, string)
+    sprintf(string, "Offset:");
+    ssd1306_draw_string(&disp, 3, 3, 2, string);
+
+    sprintf(string, "%.2f", offset);
+    ssd1306_draw_string(&disp, 3, 4 + Char_High * 2, 2, string);
 
     sprintf(string, "main Menu");
     ssd1306_draw_string(&disp, 10, 54, 1, string);
+
+    selectEle = offsetSetting;
+
+    switch (selectEle)
+    {
+    case offsetSetting:
+        ssd1306_draw_empty_square(&disp, 1, 1, 6 * Char_width * 2 + 2, Char_High * 2 + 2);
+        break;
+    case backToManu:
+        ssd1306_draw_empty_square(&disp, 8, 52, 9 * Char_width + 2, Char_High + 2);
+        break;
+    }
 
     ssd1306_show(&disp);
 }
@@ -298,7 +347,7 @@ void ui_draw_main_menu()
     switch (selectEle)
     {
     case soll:
-        ssd1306_draw_empty_square(&disp, 1, 1, (4 * Char_width) * 2 + 2, Char_High * 2 + 2);
+        ssd1306_draw_empty_square(&disp, 1, 1, (5 * Char_width) * 2 + 2, Char_High * 2 + 2);
         break;
     case settingsButton:
         ssd1306_draw_empty_square(&disp, 7, 52, 8 * Char_width + 2, Char_High + 2);
