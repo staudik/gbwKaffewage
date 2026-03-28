@@ -46,13 +46,28 @@ ssd1306_t disp;
 
 // globel Varibals
 uint32_t value = 0;
-float whight = 0;
-float tarra = 230772.8851;
-float lastStopp = 0;
+float whight = 0;          // current calc. whight
+float tarra = 230772.8851; // current tarra value
+float lastStopp = 0;       // last whight that was ground
 bool startgrind = false;
-float stopWhight = 18.0;
-uint8_t selectetRow = 1;
-bool entryMode = false;
+float stopWhight = 18.0;     // whight to stop at
+uint8_t selectetElement = 1; // Row selectet with cursure
+bool entryMode = false;      // is cursure in entrymode
+
+typedef enum
+{
+    mainMenu,
+    Settings
+} displayState;
+displayState dispState = mainMenu;
+
+typedef enum
+{
+    Soll,
+    settingsButton,
+    offset
+} selectetElement;
+selectetElement selectetElement = Soll;
 
 void ui_handling();
 
@@ -61,7 +76,7 @@ void pio_irq_handler()
 {
     if (entryMode)
     {
-        switch (selectetRow)
+        switch (selectetElement)
         {
         case 1:
             if (PIO_ENCODER->irq & 1)
@@ -80,21 +95,21 @@ void pio_irq_handler()
 
         if (PIO_ENCODER->irq & 1)
         {
-            selectetRow++;
+            selectetElement++;
         }
 
         if (PIO_ENCODER->irq & 2)
         {
-            selectetRow--;
+            selectetElement--;
         }
 
-        if (selectetRow < 1)
+        if (selectetElement < 1)
         {
-            selectetRow = 4;
+            selectetElement = 4;
         }
-        else if (selectetRow > 4)
+        else if (selectetElement > 4)
         {
-            selectetRow = 1;
+            selectetElement = 1;
         }
     }
 
@@ -104,13 +119,13 @@ void pio_irq_handler()
 // tara the whight
 void taraf()
 {
-    int sizeTarra = 200;
+    int sizeTarra = 50;
     long sum = 0;
 
     for (int i = 0; i < sizeTarra; i++)
     {
         sum += pio_sm_get(PIO_HX711, sm_hx711);
-        busy_wait_ms(10);
+        busy_wait_ms(90);
     }
 
     tarra = (float)sum / sizeTarra;
@@ -177,14 +192,15 @@ int main()
     }
 
     // Variabl init for core 0
-    int sizeMean = 20;   // size of floating Mean array
+    int sizeMean = 3;    // size of floating Mean array
     int array[sizeMean]; // array for floating mean
     int count = 0;
+    int sum = 0;
 
     // main program loop
     while (true)
     {
-        int sum = 0;
+        sum = 0;
         array[count] = pio_sm_get(PIO_HX711, sm_hx711);
         count++;
 
@@ -201,8 +217,6 @@ int main()
             count = 0;
         }
 
-        busy_wait_ms(5);
-
         if (startgrind)
         {
             gpio_put(GPIO_RELAY, true);
@@ -211,26 +225,54 @@ int main()
             {
                 gpio_put(GPIO_RELAY, false);
                 startgrind = false;
+                busy_wait_ms(10);
                 lastStopp = whight;
             }
         }
+        printf("%f\n\r", whight);
+        busy_wait_ms(80);
     }
     return 0;
 }
 
+// draws settings menu
+void ui_draw_settings()
+{
+    ssd1306_clear(&disp);
+    char string[64];
+
+    sprintf(string, "main Menu");
+    ssd1306_draw_string(&disp, 10, 54, 1, string);
+
+    ssd1306_show(&disp);
+}
+
+// draws the main menu with current data
 void ui_draw_main_menu()
 {
     ssd1306_clear(&disp);
     char string[64]; // string Buffer for sprintf
 
-    sprintf(string, "Soll: %.2f g", &stopWhight);
-    ssd1306_draw_string(&disp, 0, 0, 2, string);
+    sprintf(string, "Soll:%.1fg", stopWhight);
+    ssd1306_draw_string(&disp, 2, 2, 2, string);
 
-    sprintf(string, "Ist: %.2f g", &whight);
+    sprintf(string, "Ist:%.1fg", whight);
     ssd1306_draw_string(&disp, 0, 20, 2, string);
 
-    sprintf(string, "letzte: %.2f g", &lastStopp);
+    sprintf(string, "letzte: %.1f g", lastStopp);
     ssd1306_draw_string(&disp, 0, 40, 1, string);
+
+    sprintf(string, "Settings");
+    ssd1306_draw_string(&disp, 9, 54, 1, string);
+
+    switch (selectetElement)
+    {
+    case Soll:
+        ssd1306_draw_empty_square(&disp, 1, 1, 4 * 6 + 1, 20);
+        break;
+    case settingsButton:
+        ssd1306_draw_empty_square(&disp, 8, 53, 8 * 6 + 1, 10);
+    }
 
     ssd1306_show(&disp);
 }
@@ -250,8 +292,15 @@ void ui_handling()
 
     while (true)
     {
-        ui_draw_main_menu();
-
-        busy_wait_ms(100);
+        switch (dispState)
+        {
+        case mainMenu:
+            ui_draw_main_menu();
+            break;
+        case Settings:
+            ui_draw_settings();
+            break;
+        }
+        busy_wait_ms(250);
     }
 }
