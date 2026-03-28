@@ -38,6 +38,11 @@
 
 #define GAIN 1802
 
+// for displays
+#define Elements_On_MainMenu 3
+#define Char_High 8
+#define Char_width 6
+
 uint sm_encoder = 0;
 uint sm_hx711 = 0;
 
@@ -49,10 +54,10 @@ uint32_t value = 0;
 float whight = 0;          // current calc. whight
 float tarra = 230772.8851; // current tarra value
 float lastStopp = 0;       // last whight that was ground
+float offset = -1, 0;       // offset for stopp
 bool startgrind = false;
-float stopWhight = 18.0;     // whight to stop at
-uint8_t selectetElement = 1; // Row selectet with cursure
-bool entryMode = false;      // is cursure in entrymode
+float stopWhight = 18.0; // whight to stop at
+bool entryMode = false;  // is cursure in entrymode
 
 typedef enum
 {
@@ -63,11 +68,12 @@ displayState dispState = mainMenu;
 
 typedef enum
 {
-    Soll,
+    soll,
+    tara,
     settingsButton,
-    offset
+    offsetSetting
 } selectetElement;
-selectetElement selectetElement = Soll;
+selectetElement selectEle = soll;
 
 void ui_handling();
 
@@ -76,9 +82,9 @@ void pio_irq_handler()
 {
     if (entryMode)
     {
-        switch (selectetElement)
+        switch (selectEle)
         {
-        case 1:
+        case soll:
             if (PIO_ENCODER->irq & 1)
             {
                 stopWhight += 0.1;
@@ -95,21 +101,19 @@ void pio_irq_handler()
 
         if (PIO_ENCODER->irq & 1)
         {
-            selectetElement++;
+            selectEle++;
         }
-
         if (PIO_ENCODER->irq & 2)
         {
-            selectetElement--;
+            selectEle--;
         }
-
-        if (selectetElement < 1)
+        if (selectEle < 0)
         {
-            selectetElement = 4;
+            selectEle = Elements_On_MainMenu;
         }
-        else if (selectetElement > 4)
+        else if (selectEle > Elements_On_MainMenu)
         {
-            selectetElement = 1;
+            selectEle = 0;
         }
     }
 
@@ -131,9 +135,32 @@ void taraf()
     tarra = (float)sum / sizeTarra;
 }
 
-// interupt handler for gpio irq (putton and encoder_button)
+// interupt handler for gpio irq encoder_button
 void gpio_irq_handler(uint gpio, uint32_t event_mask)
 {
+
+    if (gpio == Encoder_Button)
+    {
+        switch (selectEle)
+        {
+        case soll:
+            if (entryMode)
+            {
+                entryMode = true;
+            }
+            else
+            {
+                entryMode = false;
+            }
+            break;
+        case tara:
+            taraf();
+            break;
+        case settingsButton:
+            dispState = Settings;
+            break;
+        }
+    }
 }
 
 int main()
@@ -241,6 +268,9 @@ void ui_draw_settings()
     ssd1306_clear(&disp);
     char string[64];
 
+    sprintf(string, "Offset: %.1f", offset);
+    ssd1306_draw_string(&disp, 3,3,2, string)
+
     sprintf(string, "main Menu");
     ssd1306_draw_string(&disp, 10, 54, 1, string);
 
@@ -254,24 +284,27 @@ void ui_draw_main_menu()
     char string[64]; // string Buffer for sprintf
 
     sprintf(string, "Soll:%.1fg", stopWhight);
-    ssd1306_draw_string(&disp, 2, 2, 2, string);
+    ssd1306_draw_string(&disp, 3, 3, 2, string);
 
-    sprintf(string, "Ist:%.1fg", whight);
-    ssd1306_draw_string(&disp, 0, 20, 2, string);
+    sprintf(string, "last:%.1fg", lastStopp);
+    ssd1306_draw_string(&disp, 3, 3 + Char_High * 2 + 2, 2, string);
 
-    sprintf(string, "letzte: %.1f g", lastStopp);
-    ssd1306_draw_string(&disp, 0, 40, 1, string);
+    sprintf(string, "Tara");
+    ssd1306_draw_string(&disp, 3, 3 + Char_High * 4 + 2, 1, string);
 
     sprintf(string, "Settings");
     ssd1306_draw_string(&disp, 9, 54, 1, string);
 
-    switch (selectetElement)
+    switch (selectEle)
     {
-    case Soll:
-        ssd1306_draw_empty_square(&disp, 1, 1, 4 * 6 + 1, 20);
+    case soll:
+        ssd1306_draw_empty_square(&disp, 1, 1, (4 * Char_width) * 2 + 2, Char_High * 2 + 2);
         break;
     case settingsButton:
-        ssd1306_draw_empty_square(&disp, 8, 53, 8 * 6 + 1, 10);
+        ssd1306_draw_empty_square(&disp, 7, 52, 8 * Char_width + 2, Char_High + 2);
+        break;
+    case tara:
+        ssd1306_draw_empty_square(&disp, 1, 3 + Char_High * 4, 4 * Char_width + 2, Char_High + 2);
     }
 
     ssd1306_show(&disp);
