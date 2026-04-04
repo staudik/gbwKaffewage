@@ -39,6 +39,7 @@ pico_sdk_init()
 add_executable(Kaffewagge Kaffewagge.c )
 add_library(ssd1306 ssd1306.c)
 
+
 pico_set_program_name(Kaffewagge "Kaffewagge")
 pico_set_program_version(Kaffewagge "0.1")
 

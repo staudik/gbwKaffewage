@@ -12,14 +12,15 @@
 #include "hardware/watchdog.h"
 #include "hardware/gpio.h"
 #include "ssd1306.h"
+#include "kaffeeBean.h"
 
 // gpio Pins
 #define HX711_DOUT 5
 #define HX711_PD_SCK 6
 
-#define Encoder_A 12
-#define Encoder_B 13
-#define Encoder_Button 11
+#define Encoder_A 11
+#define Encoder_B 12
+#define Encoder_Button 13
 
 #define GPIO_BUTTON 7
 #define GPIO_RELAY 3
@@ -39,8 +40,6 @@
 #define GAIN 1802
 
 // for displays
-#define Elements_On_MainMenu 3
-#define Elements_On_Settings 2
 #define Char_High 8
 #define Char_width 6
 
@@ -63,7 +62,7 @@ bool entryMode = false;  // is cursure in entrymode
 typedef enum
 {
     mainMenu,
-    Settings
+    Settings,
 } displayState;
 displayState dispState = mainMenu;
 
@@ -71,6 +70,7 @@ typedef enum
 {
     soll,
     tara,
+    grind,
     settingsButton,
     offsetSetting,
     backToManu,
@@ -133,23 +133,23 @@ void pio_irq_handler()
         switch (dispState)
         {
         case mainMenu:
-            if (selectEle < 0)
+            if (selectEle < soll)
             {
-                selectEle = Elements_On_MainMenu - 1;
+                selectEle = settingsButton;
             }
-            else if (selectEle > Elements_On_MainMenu - 1)
+            else if (selectEle > settingsButton)
             {
-                selectEle = 0;
+                selectEle = soll;
             }
             break;
         case Settings:
-            if (selectEle < 0)
+            if (selectEle < offsetSetting)
             {
-                selectEle = Elements_On_Settings - 1;
+                selectEle = backToManu;
             }
-            else if (selectEle > Elements_On_Settings - 1)
+            else if (selectEle > backToManu)
             {
-                selectEle = 0;
+                selectEle = offsetSetting;
             }
             break;
         }
@@ -161,6 +161,8 @@ void pio_irq_handler()
 // tara the whight
 void taraf()
 {
+
+    ssd1306_draw_string(&disp, 0, 20, 3, "tara...");
     int sizeTarra = 50;
     long sum = 0;
 
@@ -176,28 +178,32 @@ void taraf()
 // interupt handler for gpio irq encoder_button
 void gpio_irq_handler(uint gpio, uint32_t event_mask)
 {
-    gpio_acknowledge_irq(gpio, event_mask);
 
     if (gpio == Encoder_Button)
     {
-        switch (selectEle)
+        if (event_mask & GPIO_IRQ_EDGE_FALL)
         {
-        case soll:
-            if (entryMode)
+            switch (selectEle)
             {
-                entryMode = true;
+            case soll:
+                entryMode = !entryMode;
+                break;
+            case offsetSetting:
+                entryMode = !entryMode;
+                break;
+            case tara:
+                taraf();
+                break;
+            case settingsButton:
+                dispState = Settings;
+                break;
+            case backToManu:
+                dispState = mainMenu;
+                break;
+            case grind:
+                startgrind = true;
+                break;
             }
-            else
-            {
-                entryMode = false;
-            }
-            break;
-        case tara:
-            taraf();
-            break;
-        case settingsButton:
-            dispState = Settings;
-            break;
         }
     }
 }
@@ -221,6 +227,8 @@ int main()
 
         gpio_set_dir(GPIO_RELAY, GPIO_OUT);
         gpio_set_dir(Encoder_Button, GPIO_IN);
+        gpio_disable_pulls(Encoder_Button);
+        gpio_set_input_hysteresis_enabled(Encoder_Button, true);
         gpio_set_irq_enabled_with_callback(Encoder_Button, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);
 
         // sets up the pio sm for hx711
@@ -280,13 +288,14 @@ int main()
 
         if (startgrind)
         {
+            taraf();
             gpio_put(GPIO_RELAY, true);
 
-            if (whight > stopWhight)
+            if (whight > stopWhight + offset)
             {
                 gpio_put(GPIO_RELAY, false);
                 startgrind = false;
-                busy_wait_ms(10);
+                busy_wait_ms(200);
                 lastStopp = whight;
             }
         }
@@ -310,8 +319,6 @@ void ui_draw_settings()
 
     sprintf(string, "main Menu");
     ssd1306_draw_string(&disp, 10, 54, 1, string);
-
-    selectEle = offsetSetting;
 
     switch (selectEle)
     {
@@ -344,6 +351,8 @@ void ui_draw_main_menu()
     sprintf(string, "Settings");
     ssd1306_draw_string(&disp, 9, 54, 1, string);
 
+    ssd1306_bmp_show_image_with_offset(&disp, monokaffe_bmp_data, monokaffe_bmp_size, 70, 40);
+
     switch (selectEle)
     {
     case soll:
@@ -354,6 +363,10 @@ void ui_draw_main_menu()
         break;
     case tara:
         ssd1306_draw_empty_square(&disp, 1, 3 + Char_High * 4, 4 * Char_width + 2, Char_High + 2);
+        break;
+    case grind:
+        ssd1306_draw_empty_square(&disp, 70, 40, 19, 19);
+        break;
     }
 
     ssd1306_show(&disp);
@@ -383,6 +396,8 @@ void ui_handling()
             ui_draw_settings();
             break;
         }
+        printf("selectElement: %i\n", selectEle);
+        printf("entryMode %i\n", entryMode);
         busy_wait_ms(250);
     }
 }
