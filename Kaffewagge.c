@@ -43,6 +43,8 @@
 #define Char_High 8
 #define Char_width 6
 
+#define SizeMean 3 // size of floating Mean array
+
 uint sm_encoder = 0;
 uint sm_hx711 = 0;
 
@@ -50,7 +52,7 @@ uint sm_hx711 = 0;
 ssd1306_t disp;
 
 // globel Varibals
-uint32_t value = 0;
+uint32_t value = 0;        // row value for wight
 float whight = 0;          // current calc. whight
 float tarra = 230772.8851; // current tarra value
 float lastStopp = 0;       // last whight that was ground
@@ -63,6 +65,7 @@ typedef enum
 {
     mainMenu,
     Settings,
+    grinding
 } displayState;
 displayState dispState = mainMenu;
 
@@ -161,8 +164,6 @@ void pio_irq_handler()
 // tara the whight
 void taraf()
 {
-
-    ssd1306_draw_string(&disp, 0, 20, 3, "tara...");
     int sizeTarra = 50;
     long sum = 0;
 
@@ -178,7 +179,6 @@ void taraf()
 // interupt handler for gpio irq encoder_button
 void gpio_irq_handler(uint gpio, uint32_t event_mask)
 {
-
     if (gpio == Encoder_Button)
     {
         if (event_mask & GPIO_IRQ_EDGE_FALL)
@@ -208,8 +208,33 @@ void gpio_irq_handler(uint gpio, uint32_t event_mask)
     }
 }
 
-int main()
+// updates wight reading
+void updateWight()
+{
+    static int array[SizeMean]; // array for rolling mean
+    static int count = 0;
+    int sum = 0;
 
+    // reading value form pio
+    array[count] = pio_sm_get(PIO_HX711, sm_hx711);
+    count++;
+
+    // calc. sum for rolling mean
+    for (int j = 0; j < SizeMean; j++)
+    {
+        sum += array[j];
+    }
+
+    value = (sum / SizeMean);
+    whight = (value - tarra) / GAIN;
+
+    if (count >= SizeMean)
+    {
+        count = 0;
+    }
+}
+
+int main()
 {
     { // init block
         stdio_init_all();
@@ -250,9 +275,8 @@ int main()
         irq_set_enabled(PIO1_IRQ_0, true);
         //**********************************************************
 
-        busy_wait_ms(2000);
-
         taraf();
+
         // LCD and encoder are controlt by the secend core
         // grinding and wight is controled by first core
         multicore_launch_core1(ui_handling);
@@ -260,49 +284,46 @@ int main()
         // printf("Inite done\n\r");
     }
 
-    // Variabl init for core 0
-    int sizeMean = 3;    // size of floating Mean array
-    int array[sizeMean]; // array for floating mean
-    int count = 0;
-    int sum = 0;
-
     // main program loop
     while (true)
     {
-        sum = 0;
-        array[count] = pio_sm_get(PIO_HX711, sm_hx711);
-        count++;
-
-        for (int j = 0; j < sizeMean; j++)
-        {
-            sum += array[j];
-        }
-
-        value = (sum / sizeMean);
-        whight = (value - tarra) / GAIN;
-
-        if (count >= sizeMean)
-        {
-            count = 0;
-        }
-
         if (startgrind)
         {
+            dispState = grinding;
             taraf();
             gpio_put(GPIO_RELAY, true);
-
-            if (whight > stopWhight + offset)
-            {
-                gpio_put(GPIO_RELAY, false);
-                startgrind = false;
-                busy_wait_ms(200);
-                lastStopp = whight;
-            }
+            startgrind = false;
         }
+
+        updateWight();
+
+        if ((whight > stopWhight + offset) && gpio_get_out_level(GPIO_RELAY))
+        {
+            gpio_put(GPIO_RELAY, false);
+            busy_wait_ms(100);
+            updateWight();
+            dispState = mainMenu;
+            lastStopp = whight;
+        }
+
         printf("%f\n\r", whight);
         busy_wait_ms(80);
     }
     return 0;
+}
+
+void ui_draw_grindingScreen()
+{
+    ssd1306_clear(&disp);
+    char string[64];
+
+    sprintf(string, "mahle...");
+    ssd1306_draw_string(&disp, 3, 3, 2, string);
+
+    sprintf(string, "ist:%.1fg", whight);
+    ssd1306_draw_string(&disp, 3, 3 + Char_High * 2 + 2, 2, string);
+
+    ssd1306_show(&disp);
 }
 
 // draws settings menu
@@ -379,7 +400,6 @@ void ui_handling()
     char string[64]; // string Buffer for sprintf
 
     disp.external_vcc = false;
-
     // init Display and clear
     ssd1306_init(&disp, 128, 64, SSD1306_ADDRESS, I2C_PORT);
     ssd1306_clear(&disp);
@@ -395,9 +415,13 @@ void ui_handling()
         case Settings:
             ui_draw_settings();
             break;
+        case grinding:
+            ui_draw_grindingScreen();
+            break;
         }
-        printf("selectElement: %i\n", selectEle);
-        printf("entryMode %i\n", entryMode);
-        busy_wait_ms(250);
+
+        // printf("selectElement: %i\n", selectEle);
+        // printf("entryMode %i\n", entryMode);
+        busy_wait_ms(100);
     }
 }
