@@ -37,13 +37,14 @@
 #define PIO_HX711 pio0
 #define PIO_ENCODER pio1
 
-#define GAIN 1802
+// gain for wight calibration
+#define GAIN 1788
 
 // for displays
 #define Char_High 8
 #define Char_width 6
 
-#define SizeMean 3 // size of floating Mean array
+#define SizeMean 5 // size of floating Mean array
 
 uint sm_encoder = 0;
 uint sm_hx711 = 0;
@@ -170,7 +171,7 @@ void taraf()
     for (int i = 0; i < sizeTarra; i++)
     {
         sum += pio_sm_get(PIO_HX711, sm_hx711);
-        busy_wait_ms(90);
+        busy_wait_ms(20);
     }
 
     tarra = (float)sum / sizeTarra;
@@ -275,6 +276,7 @@ int main()
         irq_set_enabled(PIO1_IRQ_0, true);
         //**********************************************************
 
+        busy_wait_ms(200);
         taraf();
 
         // LCD and encoder are controlt by the secend core
@@ -300,14 +302,19 @@ int main()
         if ((whight > stopWhight + offset) && gpio_get_out_level(GPIO_RELAY))
         {
             gpio_put(GPIO_RELAY, false);
-            busy_wait_ms(100);
-            updateWight();
+            // withing vor Wight to satel to read last whight
+            for (int i = 0; i < SizeMean * 3; i++)
+            {
+                updateWight();
+                busy_wait_ms(20);
+            }
+
             dispState = mainMenu;
             lastStopp = whight;
         }
 
         printf("%f\n\r", whight);
-        busy_wait_ms(80);
+        busy_wait_ms(20);
     }
     return 0;
 }
